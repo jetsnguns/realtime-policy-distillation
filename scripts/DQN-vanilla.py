@@ -10,12 +10,4 @@ model = DQN(CnnPolicy, env, verbose=1, tensorboard_log='dqn-invaders')
 model.learn(total_timesteps=25000)
 model.save("deepq_inv")
 
-del model # remove to demonstrate saving and loading
-
-model = DQN.load("deepq_inv")
-
-obs = env.reset()
-while True:
-    action, _states = model.predict(obs)
-    obs, rewards, dones, info = env.step(action)
-    env.render()
+#del model # remove to demonstrate saving and loading
