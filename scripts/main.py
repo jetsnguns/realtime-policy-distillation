@@ -23,7 +23,8 @@ MyPolicy = DQNTorchPolicy.with_updates(
 )
 
 
-MyTrainer = DQNTrainer.with_updates(
+# MyTrainer = DQNTrainer.with_updates(
+MyTrainer=ApexTrainer.with_updates(
     name='MyDQN',
     get_policy_class=my_get_policy,
     default_policy=MyPolicy,
@@ -35,13 +36,12 @@ tune.run(
     config={
         "env": "SpaceInvaders-v0",
         "num_gpus": 1,
-        "num_workers": 16,
+        "num_workers": 6,
         # "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         "use_pytorch": True,
         "model": {
             "custom_model": "custom_model",
             "custom_options": {"tau": 1.},
-            "num_outputs": 6,
         },
         "monitor": True,
         "dueling": False,
@@ -52,5 +52,6 @@ tune.run(
         "evaluation_config": {
             "explore": False,
         },
+        "log_level": "DEBUG",
     },
 )

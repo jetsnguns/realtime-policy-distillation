@@ -1,4 +1,5 @@
 import math
+from random import random
 from typing import Sequence
 
 import ray
@@ -14,29 +15,29 @@ from torch import nn
 
 
 class BasicArch(nn.Module):
-    def __init__(self, conv_channels: Sequence[int], fc_dims: int, out_dims: int):
+    def __init__(self, in_channels, conv_channels: Sequence[int], fc_dims: int, out_dims: int):
+        assert len(conv_channels) == 3
         super().__init__()
 
         self.feature_extractor = nn.Sequential(
-            *[nn.Sequential(nn.Conv2d(in_ch, out_ch, 3, stride=2), nn.ReLU())
-              for in_ch, out_ch in zip(conv_channels[:-1], conv_channels[1:])]
-        )
-
-        self.avg_pooling = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Sequential(
-            nn.Linear(conv_channels[-1], fc_dims),
+            nn.Conv2d(in_channels, conv_channels[0], 8, 4),
+            nn.ReLU(),
+            nn.Conv2d(conv_channels[0], conv_channels[1], 4, 2),
+            nn.ReLU(),
+            nn.Conv2d(conv_channels[1], conv_channels[2], 3, 1),
             nn.ReLU(),
         )
-        self.out = nn.Linear(fc_dims, out_dims)
 
-        self.conv_channels = conv_channels
+        self.fc = nn.Sequential(
+            nn.Linear(7 * 7 * conv_channels[-1], fc_dims),
+            nn.ReLU(),
+            nn.Linear(fc_dims, out_dims),
+        )
 
     def forward(self, x):
         x = self.feature_extractor(x)
-        x = self.avg_pooling(x)
-        x = x.reshape(-1, self.conv_channels[-1])
+        x = x.reshape(x.shape[0], -1)
         x = self.fc(x)
-        x = self.out(x)
         return x
 
 
@@ -47,8 +48,8 @@ class CustomModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
 
-        self.trainer = BasicArch([4, 8, 16], 32, num_outputs)
-        self.student = BasicArch([4, 4, 4], 32, num_outputs)
+        self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
+        self.student = BasicArch(4, [16, 32, 32], 56, num_outputs)
 
         self.nets = {
             "trainer": self.trainer,
