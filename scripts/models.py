@@ -1,5 +1,9 @@
+import math
 from typing import Sequence
 
+import ray
+from ray.rllib.evaluation import collect_metrics
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models import ModelCatalog
 from ray.rllib.utils.annotations import override
@@ -46,10 +50,21 @@ class CustomModel(TorchModelV2, nn.Module):
         self.trainer = BasicArch([4, 8, 16], 32, num_outputs)
         self.student = BasicArch([4, 4, 4], 32, num_outputs)
 
+        self.nets = {
+            "trainer": self.trainer,
+            "student": self.student,
+        }
+        self.custom_net = None
+
+
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
         x = input_dict['obs'].permute((0, 3, 1, 2)).float()
-        return self.trainer(x), state
+        if self.custom_net is not None:
+            x = self.nets[self.custom_net](x)
+        else:
+            x = self.trainer(x)
+        return x, state
 
     def get_advantages_or_q_values(self, model_outputs):
         return model_outputs
@@ -113,12 +128,13 @@ class Loss:
         self.student_kl = self.kl_loss(trainer['prev'].detach(), student['prev'], tau)
 
         self.loss = self.trainer_q + self.student_q + self.student_kl
-        self.td_error = self.trainer_td_error.detach()
+        self.td_error = full_detach(self.trainer_td_error)
+
         self.stats = {
-            "our_td_error": self.td_error.detach(),
-            "our_trainer_q": self.trainer_q.detach(),
-            "our_student_q": self.student_q.detach(),
-            "our_student_kl": self.student_kl.detach(),
+            "our_td_error": self.td_error,
+            "our_trainer_q": full_detach(self.trainer_q).item(),
+            "our_student_q": full_detach(self.student_q).item(),
+            "our_student_kl": full_detach(self.student_kl).item(),
         }
 
         policy.q_loss = self
@@ -134,3 +150,45 @@ def loss_callback(policy, model, _, train_batch):
         policy.config['model']['custom_options']['tau'],
     )
     return loss.loss
+
+
+def custom_eval_fn(trainer, workers: WorkerSet):
+    def change_q_func(net_id):
+        def foo(policy, _):
+            policy.model.custom_net = net_id
+        return foo
+
+    result = {}
+
+    for net_id in trainer.get_policy().q_model.nets:
+        print(net_id)
+
+        workers.foreach_policy(change_q_func(net_id))
+
+        if trainer.config["evaluation_num_workers"] == 0:
+            for _ in range(trainer.config["evaluation_num_episodes"]):
+                trainer.evaluation_workers.local_worker().sample()
+        else:
+            num_rounds = int(
+                math.ceil(trainer.config["evaluation_num_episodes"] /
+                          trainer.config["evaluation_num_workers"]))
+            num_workers = len(trainer.evaluation_workers.remote_workers())
+            num_episodes = num_rounds * num_workers
+            for i in range(num_rounds):
+                ray.get([
+                    w.sample.remote()
+                    for w in trainer.evaluation_workers.remote_workers()
+                ])
+
+        metrics = collect_metrics(trainer.evaluation_workers.local_worker(),
+                                  trainer.evaluation_workers.remote_workers())
+
+        result[net_id] = metrics
+
+    workers.foreach_policy(change_q_func(None))
+
+    return result
+
+
+def full_detach(tensor):
+    return tensor.cpu().detach().numpy()
