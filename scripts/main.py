@@ -14,7 +14,7 @@ def my_get_policy(*args, **kwargs):
     return MyPolicy
 
 
-ray.init(local_mode=True)
+ray.init()
 
 
 MyPolicy = DQNTorchPolicy.with_updates(
@@ -36,7 +36,7 @@ tune.run(
     config={
         "env": "SpaceInvaders-v0",
         "num_gpus": 1,
-        "num_workers": 6,
+        "num_workers": 24,
         # "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         "use_pytorch": True,
         "model": {
@@ -46,12 +46,14 @@ tune.run(
         "monitor": True,
         "dueling": False,
         "hiddens": False,
-        "custom_eval_function": custom_eval_fn,
+        #
         "evaluation_interval": 30,
+        "custom_eval_function": custom_eval_fn,
         "evaluation_num_episodes": 100,
-        "evaluation_config": {
-            "explore": False,
-        },
-        "log_level": "DEBUG",
+        # "evaluation_config": {
+        #     "explore": False,
+        # },
+        # "log_level": "DEBUG",
+        "worker_side_prioritization": False,
     },
 )

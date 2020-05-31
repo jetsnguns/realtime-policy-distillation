@@ -1,6 +1,7 @@
 import math
+from dataclasses import dataclass
 from random import random
-from typing import Sequence
+from typing import Sequence, Optional
 
 import ray
 from ray.rllib.evaluation import collect_metrics
@@ -41,6 +42,21 @@ class BasicArch(nn.Module):
         return x
 
 
+class Student(nn.Module):
+    def __init__(self, net: nn.Module, kl_mode: str):
+        super().__init__()
+
+        self.net = net
+        self.kl_mode = kl_mode
+
+    @classmethod
+    def create_dict_entry(cls, conv_channels, fc_dims, action_space):
+        return (
+            f"student_{conv_channels[0]}_{conv_channels[1]}_{conv_channels[2]}_{fc_dims}",
+            cls(BasicArch(4, conv_channels, fc_dims, action_space), "forward"),
+        )
+
+
 class CustomModel(TorchModelV2, nn.Module):
     def __init__(self, obs_space, action_space, num_outputs, model_config, name, **kwargs):
         assert num_outputs == action_space.n
@@ -49,12 +65,12 @@ class CustomModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
-        self.student = BasicArch(4, [16, 32, 32], 56, num_outputs)
 
-        self.nets = {
-            "trainer": self.trainer,
-            "student": self.student,
-        }
+        self.students = nn.ModuleDict([
+            Student.create_dict_entry([16, 32, 32], 256, action_space.n),
+            Student.create_dict_entry([16, 16, 16], 128, action_space.n),
+            Student.create_dict_entry([16, 16, 16], 64, action_space.n),
+        ])
         self.custom_net = None
 
 
@@ -62,7 +78,7 @@ class CustomModel(TorchModelV2, nn.Module):
     def forward(self, input_dict, state, seq_lens):
         x = input_dict['obs'].permute((0, 3, 1, 2)).float()
         if self.custom_net is not None:
-            x = self.nets[self.custom_net](x)
+            x = self.students[self.custom_net].net(x)
         else:
             x = self.trainer(x)
         return x, state
@@ -118,25 +134,31 @@ class Loss:
     def __init__(self, policy, model, target_model, train_batch, gamma, tau):
         trainer = self.calc_prev_next_q(model.trainer, train_batch)
         trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
-        student = self.calc_prev_next_q(model.student, train_batch)
 
         self.trainer_q, self.trainer_td_error = self.q_loss(
             trainer['prev'], trainer['next'], trainer_target['next'], train_batch, gamma,
         )
-        self.student_q, self.student_td_error = self.q_loss(
-            student['prev'], student['next'], trainer_target['next'], train_batch, gamma,
-        )
-        self.student_kl = self.kl_loss(trainer['prev'].detach(), student['prev'], tau)
-
-        self.loss = self.trainer_q + self.student_q + self.student_kl
-        self.td_error = full_detach(self.trainer_td_error)
-
         self.stats = {
-            "our_td_error": self.td_error,
             "our_trainer_q": full_detach(self.trainer_q).item(),
-            "our_student_q": full_detach(self.student_q).item(),
-            "our_student_kl": full_detach(self.student_kl).item(),
         }
+
+        loss = self.trainer_q
+
+        for key, student in model.students.items():
+            student_q_values = self.calc_prev_next_q(student.net, train_batch)
+            student_q_loss, student_td_error = self.q_loss(
+                student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma,
+            )
+            student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau)
+            self.stats = {
+                f"our_{key}_q": full_detach(student_q_loss).item(),
+                f"our_{key}_kl": full_detach(student_kl).item(),
+            }
+
+            loss = loss + student_q_loss + student_kl
+
+        self.loss = loss
+        self.td_error = full_detach(self.trainer_td_error)
 
         policy.q_loss = self
 
@@ -159,11 +181,7 @@ def custom_eval_fn(trainer, workers: WorkerSet):
             policy.model.custom_net = net_id
         return foo
 
-    result = {}
-
-    for net_id in trainer.get_policy().q_model.nets:
-        print(net_id)
-
+    def evaluate(tag: str, net_id: Optional[str], result):
         workers.foreach_policy(change_q_func(net_id))
 
         if trainer.config["evaluation_num_workers"] == 0:
@@ -184,7 +202,13 @@ def custom_eval_fn(trainer, workers: WorkerSet):
         metrics = collect_metrics(trainer.evaluation_workers.local_worker(),
                                   trainer.evaluation_workers.remote_workers())
 
-        result[net_id] = metrics
+        result[tag] = metrics
+
+    result = {}
+
+    evaluate("trainer", None, result)
+    for net_id in trainer.get_policy().q_model.students:
+        evaluate(net_id, net_id, result)
 
     workers.foreach_policy(change_q_func(None))
 
