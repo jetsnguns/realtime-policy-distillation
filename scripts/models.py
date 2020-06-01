@@ -122,7 +122,7 @@ class Loss:
 
         td_error = lhs - rhs.detach()
         huber = huber_loss(td_error)
-        loss = huber * train_batch['weights']
+        loss = huber  #  * train_batch['weights']
 
         stats = {
             "mean_q": full_detach(lhs.mean()).item(),

@@ -23,8 +23,8 @@ MyPolicy = DQNTorchPolicy.with_updates(
 )
 
 
-MyTrainer = DQNTrainer.with_updates(
-# MyTrainer=ApexTrainer.with_updates(
+# MyTrainer = DQNTrainer.with_updates(
+MyTrainer=ApexTrainer.with_updates(
     name='MyDQN',
     get_policy_class=my_get_policy,
     default_policy=MyPolicy,
@@ -36,7 +36,7 @@ tune.run(
     config={
         "env": "SpaceInvadersNoFrameskip-v4",
         "num_gpus": 1,
-        "num_workers": 4,
+        "num_workers": 8,
         "num_envs_per_worker": 8,
         # "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         "use_pytorch": True,
@@ -65,9 +65,10 @@ tune.run(
             "final_epsilon": 0.01,
             "epsilon_timesteps": 200000,
         },
-        "prioritized_replay_alpha": 0.5,
-        "final_prioritized_replay_beta": 1.0,
-        "prioritized_replay_beta_annealing_timesteps": 2000000,
+        # "prioritized_replay": False,
+        # "prioritized_replay_alpha": 0.5,
+        # "final_prioritized_replay_beta": 1.0,
+        # "prioritized_replay_beta_annealing_timesteps": 2000000,
         #
         # "evaluation_interval": 1,
         # "custom_eval_function": custom_eval_fn,
@@ -76,6 +77,6 @@ tune.run(
         #     "explore": False,
         # },
         # "log_level": "DEBUG",
-        "worker_side_prioritization": False,
+        # "worker_side_prioritization": False,
     },
 )
