@@ -112,6 +112,7 @@ class Loss:
     @staticmethod
     def q_loss(q_prev, q_next, next_action_q, train_batch, gamma, n_step):
         lhs = Loss.choose(q_prev, train_batch[SampleBatch.ACTIONS].reshape(-1, 1))
+
         a_next = t.argmax(next_action_q, 1, keepdim=True)
 
         rhs = (
@@ -123,27 +124,37 @@ class Loss:
         huber = huber_loss(td_error)
         loss = huber * train_batch['weights']
 
-        return loss.mean(), td_error
+        stats = {
+            "mean_q": full_detach(lhs.mean()).item(),
+            "min_q": full_detach(lhs.min()).item(),
+            "max_q": full_detach(lhs.max()).item(),
+            "mean_td_error": full_detach(td_error.mean()).item(),
+        }
+
+        return loss.mean(), td_error, stats
 
     @staticmethod
     def kl_loss(q1, q2, tau):
         log_p1 = t.log_softmax(q1 / tau, 1)
         log_p2 = t.log_softmax(q2 / tau, 1)
 
-        # print(log_p1.shape, log_p2.shape)
-
         return (t.exp(log_p1) * (log_p1 - log_p2)).mean()
 
     def __init__(self, policy, model, target_model, train_batch, gamma, tau):
-        trainer = self.calc_prev_next_q(model.trainer, train_batch)
-        with t.no_grad():
-            trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
+        # trainer = self.calc_prev_next_q(model.trainer, train_batch)
+        # with t.no_grad():
+        #     trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
 
-        self.trainer_q, self.trainer_td_error = self.q_loss(
+        trainer = {'prev': self.calc_q(model.trainer, train_batch[SampleBatch.CUR_OBS])}
+        with t.no_grad():
+            trainer_target = {'next': self.calc_q(target_model.trainer, train_batch[SampleBatch.NEXT_OBS])}
+
+        self.trainer_q, self.trainer_td_error, stats = self.q_loss(
             trainer['prev'], trainer_target['next'], trainer_target['next'], train_batch, gamma, policy.config['n_step']
         )
         self.stats = {
             "our_trainer_q": full_detach(self.trainer_q).item(),
+            **stats,
         }
 
         loss = self.trainer_q
