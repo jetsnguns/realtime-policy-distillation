@@ -47,9 +47,9 @@ tune.run(
         "dueling": False,
         "hiddens": False,
         #
-        "evaluation_interval": 30,
-        "custom_eval_function": custom_eval_fn,
-        "evaluation_num_episodes": 100,
+        # "evaluation_interval": 30,
+        # "custom_eval_function": custom_eval_fn,
+        # "evaluation_num_episodes": 100,
         #
         "worker_side_prioritization": False,
         "target_network_update_freq": 50000,
