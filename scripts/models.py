@@ -14,6 +14,8 @@ from ray.rllib.utils.torch_ops import huber_loss
 import torch as t
 from torch import nn
 
+from scripts.visnet import VisNet
+
 
 class BasicArch(nn.Module):
     def __init__(self, in_channels, conv_channels: Sequence[int], fc_dims: int, out_dims: int):
@@ -64,7 +66,8 @@ class CustomModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
 
-        self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
+        #self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
+        self.trainer = VisNet(4, num_outputs)
 
         self.students = nn.ModuleDict([
             Student.create_dict_entry([16, 32, 32], 256, action_space.n),
