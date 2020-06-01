@@ -67,7 +67,7 @@ class CustomModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         #self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
-        self.trainer = VisNet(4, num_outputs)
+        self.trainer = VisNet(obs_space.shape, num_outputs)
 
         self.students = nn.ModuleDict([
             Student.create_dict_entry([16, 32, 32], 256, action_space.n),
