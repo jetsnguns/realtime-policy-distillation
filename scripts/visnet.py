@@ -50,7 +50,7 @@ class VisNet(nn.Module):
         self._convs = nn.Sequential(*layers)
 
         self._hidden = SlimFC(
-            out_channels, hiddens, initializer=nn.init.xavier_uniform_)
+            out_channels, hiddens, activation_fn=activation, initializer=nn.init.xavier_uniform_)
 
         self._logits = SlimFC(
             hiddens, out_dims, initializer=nn.init.xavier_uniform_)
