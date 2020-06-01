@@ -63,8 +63,13 @@ class VisNet(nn.Module):
         return logits
 
     def _hidden_layers(self, obs):
-        res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
+        #res = self._convs(obs.permute(0, 3, 1, 2))  # switch to channel-major
+        #res = res.squeeze(3)
+        #res = res.squeeze(2)
+        res = self._convs(obs)
+        #print("res.shape = ", res.shape)
         res = res.squeeze(3)
         res = res.squeeze(2)
+        #print("res.shape = ", res.shape)
         res = self._hidden(res)
         return res
