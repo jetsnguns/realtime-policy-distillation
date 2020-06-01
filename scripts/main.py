@@ -36,8 +36,8 @@ tune.run(
     config={
         "env": "SpaceInvaders-v0",
         "num_gpus": 1,
-        "num_workers": 24,
-        # "lr": tune.grid_search([0.01, 0.001, 0.0001]),
+        "num_workers": 2,
+        "buffer_size": 5000,
         "use_pytorch": True,
         "model": {
             "custom_model": "custom_model",
@@ -50,10 +50,9 @@ tune.run(
         "evaluation_interval": 30,
         "custom_eval_function": custom_eval_fn,
         "evaluation_num_episodes": 100,
-        # "evaluation_config": {
-        #     "explore": False,
-        # },
-        # "log_level": "DEBUG",
+        #
         "worker_side_prioritization": False,
+        "target_network_update_freq": 50000,
     },
+    checkpoint_freq=1,
 )

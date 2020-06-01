@@ -1,5 +1,6 @@
 import math
 from dataclasses import dataclass
+from enum import Enum, auto
 from random import random
 from typing import Sequence, Optional
 
@@ -13,6 +14,12 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.torch_ops import huber_loss
 import torch as t
 from torch import nn
+
+
+class KlMode(Enum):
+    forward = auto()
+    reverse = auto()
+    no_q_loss = auto()
 
 
 class BasicArch(nn.Module):
@@ -43,21 +50,23 @@ class BasicArch(nn.Module):
 
 
 class Student(nn.Module):
-    def __init__(self, net: nn.Module, kl_mode: str):
+    def __init__(self, net: nn.Module, kl_mode: KlMode):
         super().__init__()
 
         self.net = net
         self.kl_mode = kl_mode
 
     @classmethod
-    def create_dict_entry(cls, conv_channels, fc_dims, action_space):
+    def create_dict_entry(cls, conv_channels, fc_dims, action_space, kl_mode):
         return (
-            f"student_{conv_channels[0]}_{conv_channels[1]}_{conv_channels[2]}_{fc_dims}",
-            cls(BasicArch(4, conv_channels, fc_dims, action_space), "forward"),
+            f"student_{conv_channels[0]}_{conv_channels[1]}_{conv_channels[2]}_{fc_dims}_{kl_mode.name}",
+            cls(BasicArch(4, conv_channels, fc_dims, action_space), kl_mode),
         )
 
 
 class CustomModel(TorchModelV2, nn.Module):
+    STUDENT_ARCHS = [([16, 16, 16], 64), ([16, 16, 16], 128), ([16, 32, 32], 256)]
+
     def __init__(self, obs_space, action_space, num_outputs, model_config, name, **kwargs):
         assert num_outputs == action_space.n
 
@@ -65,14 +74,11 @@ class CustomModel(TorchModelV2, nn.Module):
         nn.Module.__init__(self)
 
         self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
-
-        self.students = nn.ModuleDict([
-            Student.create_dict_entry([16, 32, 32], 256, action_space.n),
-            Student.create_dict_entry([16, 16, 16], 128, action_space.n),
-            Student.create_dict_entry([16, 16, 16], 64, action_space.n),
-        ])
+        self.students = nn.ModuleDict(dict([
+            Student.create_dict_entry(*arch, action_space.n, kl_mode)
+            for arch in self.STUDENT_ARCHS for kl_mode in KlMode
+        ]))
         self.custom_net = None
-
 
     @override(TorchModelV2)
     def forward(self, input_dict, state, seq_lens):
@@ -123,11 +129,12 @@ class Loss:
         return loss.mean(), td_error
 
     @staticmethod
-    def kl_loss(q1, q2, tau):
+    def kl_loss(q1, q2, tau, kl_mode):
         log_p1 = t.log_softmax(q1 / tau, 1)
         log_p2 = t.log_softmax(q2 / tau, 1)
 
-        # print(log_p1.shape, log_p2.shape)
+        if kl_mode == KlMode.reverse:
+            log_p1, log_p2 = log_p2, log_p1
 
         return (t.exp(log_p1) * (log_p1 - log_p2)).mean()
 
@@ -146,14 +153,17 @@ class Loss:
 
         for key, student in model.students.items():
             student_q_values = self.calc_prev_next_q(student.net, train_batch)
-            student_q_loss, student_td_error = self.q_loss(
-                student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma,
-            )
-            student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau)
-            self.stats = {
+            if student.kl_mode != KlMode.no_q_loss:
+                student_q_loss, _ = self.q_loss(
+                    student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma,
+                )
+            else:
+                student_q_loss = t.zeros(tuple())
+            student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau, student.kl_mode)
+            self.stats.update({
                 f"our_{key}_q": full_detach(student_q_loss).item(),
                 f"our_{key}_kl": full_detach(student_kl).item(),
-            }
+            })
 
             loss = loss + student_q_loss + student_kl
 
@@ -164,6 +174,8 @@ class Loss:
 
 
 def loss_callback(policy, model, _, train_batch):
+    assert policy.q_model == model
+
     loss = Loss(
         policy,
         policy.q_model,
