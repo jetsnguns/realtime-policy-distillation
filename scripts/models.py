@@ -204,6 +204,8 @@ def custom_eval_fn(trainer, workers: WorkerSet):
 
         result[tag] = metrics
 
+    print("custom_eval_fn called!")
+
     result = {}
 
     evaluate("trainer", None, result)
@@ -211,6 +213,13 @@ def custom_eval_fn(trainer, workers: WorkerSet):
         evaluate(net_id, net_id, result)
 
     workers.foreach_policy(change_q_func(None))
+
+    try:
+        with open("ray_custom_eval.txt", "a+") as fp:
+            fp.write("-----\n")
+            fp.write(str(result))
+    except:
+        pass
 
     return result
 
