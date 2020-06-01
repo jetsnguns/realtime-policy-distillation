@@ -110,13 +110,13 @@ class Loss:
         }
 
     @staticmethod
-    def q_loss(q_prev, q_next, next_action_q, train_batch, gamma):
+    def q_loss(q_prev, q_next, next_action_q, train_batch, gamma, n_step):
         lhs = Loss.choose(q_prev, train_batch[SampleBatch.ACTIONS].reshape(-1, 1))
         a_next = t.argmax(next_action_q, 1, keepdim=True)
 
         rhs = (
             train_batch[SampleBatch.REWARDS] +
-            gamma * Loss.choose(q_next, a_next) * (1.0 - train_batch[SampleBatch.DONES].float())
+            gamma**n_step * Loss.choose(q_next, a_next) * (1.0 - train_batch[SampleBatch.DONES].float())
         )
 
         td_error = lhs - rhs.detach()
@@ -136,10 +136,11 @@ class Loss:
 
     def __init__(self, policy, model, target_model, train_batch, gamma, tau):
         trainer = self.calc_prev_next_q(model.trainer, train_batch)
-        trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
+        with t.no_grad():
+            trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
 
         self.trainer_q, self.trainer_td_error = self.q_loss(
-            trainer['prev'], trainer['next'], trainer_target['next'], train_batch, gamma,
+            trainer['prev'], trainer_target['next'], trainer_target['next'], train_batch, gamma, policy.config['n_step']
         )
         self.stats = {
             "our_trainer_q": full_detach(self.trainer_q).item(),
@@ -147,18 +148,18 @@ class Loss:
 
         loss = self.trainer_q
 
-        for key, student in model.students.items():
-            student_q_values = self.calc_prev_next_q(student.net, train_batch)
-            student_q_loss, student_td_error = self.q_loss(
-                student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma,
-            )
-            student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau)
-            self.stats = {
-                f"our_{key}_q": full_detach(student_q_loss).item(),
-                f"our_{key}_kl": full_detach(student_kl).item(),
-            }
-
-            loss = loss + student_q_loss + student_kl
+        # for key, student in model.students.items():
+        #     student_q_values = self.calc_prev_next_q(student.net, train_batch)
+        #     student_q_loss, student_td_error = self.q_loss(
+        #         student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma,
+        #     )
+        #     student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau)
+        #     self.stats = {
+        #         f"our_{key}_q": full_detach(student_q_loss).item(),
+        #         f"our_{key}_kl": full_detach(student_kl).item(),
+        #     }
+        #
+        #     loss = loss + student_q_loss + student_kl
 
         self.loss = loss
         self.td_error = full_detach(self.trainer_td_error)

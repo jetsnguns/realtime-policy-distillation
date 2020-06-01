@@ -69,12 +69,12 @@ tune.run(
         "final_prioritized_replay_beta": 1.0,
         "prioritized_replay_beta_annealing_timesteps": 2000000,
         #
-        "evaluation_interval": 1,
-        "custom_eval_function": custom_eval_fn,
-        "evaluation_num_episodes": 30,
-        "evaluation_config": {
-            "explore": False,
-        },
+        # "evaluation_interval": 1,
+        # "custom_eval_function": custom_eval_fn,
+        # "evaluation_num_episodes": 30,
+        # "evaluation_config": {
+        #     "explore": False,
+        # },
         # "log_level": "DEBUG",
         "worker_side_prioritization": False,
     },
