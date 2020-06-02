@@ -34,9 +34,10 @@ tune.run(
     MyTrainer,
     stop={"episode_reward_mean": 20000},
     config={
-        "env": "SpaceInvadersNoFrameskip-v4",
+        "env": "BreakoutNoFrameskip-v4",
         "num_gpus": 1,
-        "num_workers": 12,
+        "num_workers": 8,
+        "evaluation_num_workers": 8,
         "num_envs_per_worker": 8,
         # "lr": tune.grid_search([0.01, 0.001, 0.0001]),
         "use_pytorch": True,
@@ -70,9 +71,9 @@ tune.run(
     # "final_prioritized_replay_beta": 1.0,
     # "prioritized_replay_beta_annealing_timesteps": 2000000,
     #
-        "evaluation_interval": 30,
+        "evaluation_interval": 5,
         "custom_eval_function": custom_eval_fn,
-        "evaluation_num_episodes": 30,
+        "evaluation_num_episodes": 5,
         "evaluation_config": {
             "explore": False,
         },
