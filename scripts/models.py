@@ -1,7 +1,5 @@
 import math
-from dataclasses import dataclass
 from enum import Enum, auto
-from random import random
 from typing import Sequence, Optional
 
 import ray
@@ -73,7 +71,7 @@ class CustomModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs, model_config, name)
         nn.Module.__init__(self)
 
-        self.trainer = BasicArch(4, [32, 64, 64], 512, num_outputs)
+        self.teacher = BasicArch(4, [32, 64, 64], 512, num_outputs)
         self.students = nn.ModuleDict(dict([
             Student.create_dict_entry(*arch, action_space.n, kl_mode)
             for arch in self.STUDENT_ARCHS for kl_mode in KlMode
@@ -86,7 +84,7 @@ class CustomModel(TorchModelV2, nn.Module):
         if self.custom_net is not None:
             x = self.students[self.custom_net].net(x)
         else:
-            x = self.trainer(x)
+            x = self.teacher(x)
         return x, state
 
     def get_advantages_or_q_values(self, model_outputs):
@@ -124,7 +122,7 @@ class Loss:
 
         td_error = lhs - rhs.detach()
         huber = huber_loss(td_error)
-        loss = huber * train_batch['weights']
+        loss = huber  # * train_batch['weights']
 
         return loss.mean(), td_error
 
@@ -138,13 +136,13 @@ class Loss:
 
         return (t.exp(log_p1) * (log_p1 - log_p2)).mean()
 
-    def __init__(self, policy, model, target_model, train_batch, gamma, tau):
-        trainer = self.calc_prev_next_q(model.trainer, train_batch)
+    def __init__(self, policy, model, target_model, train_batch, gamma, tau, n_step):
+        teacher_prev = self.calc_q(model.teacher, train_batch[SampleBatch.CUR_OBS])
         with t.no_grad():
-            trainer_target = self.calc_prev_next_q(target_model.trainer, train_batch)
+            teacher_next = self.calc_q(target_model.teacher, train_batch[SampleBatch.NEXT_OBS])
 
         self.trainer_q, self.trainer_td_error = self.q_loss(
-            trainer['prev'], trainer_target['next'], trainer_target['next'], train_batch, gamma, policy.config['n_step']
+            teacher_prev, teacher_next, teacher_next, train_batch, gamma, n_step
         )
         self.stats = {
             "our_trainer_q": full_detach(self.trainer_q).item(),
@@ -152,21 +150,22 @@ class Loss:
 
         loss = self.trainer_q
 
-        # for key, student in model.students.items():
-        #     student_q_values = self.calc_prev_next_q(student.net, train_batch)
-        #     if student.kl_mode != KlMode.no_q_loss:
-        #         student_q_loss, _ = self.q_loss(
-        #             student_q_values['prev'], student_q_values['next'], trainer_target['next'], train_batch, gamma, policy.config['n_steps']
-        #         )
-        #     else:
-        #         student_q_loss = t.zeros(tuple())
-        #     student_kl = self.kl_loss(trainer['prev'].detach(), student_q_values['prev'], tau, student.kl_mode)
-        #     self.stats.update({
-        #         f"our_{key}_q": full_detach(student_q_loss).item(),
-        #         f"our_{key}_kl": full_detach(student_kl).item(),
-        #     })
-        #
-        #     loss = loss + student_q_loss + student_kl
+        for key, student in model.students.items():
+            student_prev = self.calc_q(student.net, train_batch[SampleBatch.CUR_OBS])
+            with t.no_grad():
+                student_next = self.calc_q(target_model.students[key].net, train_batch[SampleBatch.NEXT_OBS])
+
+            if student.kl_mode != KlMode.no_q_loss:
+                student_q_loss, _ = self.q_loss(student_prev, student_next, teacher_next, train_batch, gamma, n_step)
+            else:
+                student_q_loss = t.zeros(tuple())
+            student_kl = self.kl_loss(teacher_prev.detach(), student_prev, tau, student.kl_mode)
+            self.stats.update({
+                f"our_{key}_q": full_detach(student_q_loss).item(),
+                f"our_{key}_kl": full_detach(student_kl).item(),
+            })
+
+            loss = loss + student_q_loss + student_kl
 
         self.loss = loss
         self.td_error = full_detach(self.trainer_td_error)
@@ -182,8 +181,9 @@ def loss_callback(policy, model, _, train_batch):
         policy.q_model,
         policy.target_q_model,
         train_batch,
-        policy.config['gamma'],
-        policy.config['model']['custom_options']['tau'],
+        gamma=policy.config['gamma'],
+        tau=policy.config['model']['custom_options']['tau'],
+        n_step=policy.config['n_step'],
     )
     return loss.loss
 
