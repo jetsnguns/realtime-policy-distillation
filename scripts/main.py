@@ -34,7 +34,7 @@ tune.run(
     MyTrainer,
     stop={"episode_reward_mean": 20000},
     config={
-        "env": "BreakoutNoFrameskip-v4",
+        "env": "PongNoFrameskip-v4",
         "num_gpus": 1,
         "num_workers": 8,
         "evaluation_num_workers": 8,
@@ -71,13 +71,14 @@ tune.run(
     # "final_prioritized_replay_beta": 1.0,
     # "prioritized_replay_beta_annealing_timesteps": 2000000,
     #
-        "evaluation_interval": 5,
+        "evaluation_interval": 1,
         "custom_eval_function": custom_eval_fn,
-        "evaluation_num_episodes": 5,
+        "evaluation_num_episodes": 30,
         "evaluation_config": {
             "explore": False,
         },
         "worker_side_prioritization": False,
     },
     checkpoint_freq=1,
+    local_dir="results",
 )
