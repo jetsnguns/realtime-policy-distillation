@@ -4,7 +4,7 @@ Implementation of "Real-time Policy Distillation in Deep Reinforcement Learning"
 
 # Installation
 
-Python 3.8+ and [ray rllib](https://docs.ray.io/en/master/rllib.html) with pytorch backend are two main requirements. Full conda environment specification (and specific library version) could be found in `environment.yml` file. 
+Python 3.8+ and [ray rllib](https://docs.ray.io/en/master/rllib.html) with [pytorch](https://pytorch.org/) backend are two main requirements. Full conda environment specification (and specific library versions) could be found in `environment.yml` file. 
 
 # Code structure
 
