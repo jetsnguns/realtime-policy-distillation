@@ -1,6 +1,6 @@
-env: "PongNoFrameskip-v4"
+env: "QbertNoFrameskip-v4"
 num_gpus: 1
-num_workers: 16
+num_workers: 8
 evaluation_num_workers: 8
 num_envs_per_worker: 8
 use_pytorch: True
