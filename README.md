@@ -18,7 +18,8 @@ File `plots.ipynb` contains the reproduction of all tables and figures from the 
 
 # How to run trainig
 
-In order to run a training process, you should firstly create a config file (three config files, that was used for the project are presented in the folder `configs`). It should be in a yaml file format and it is a common `ray.rllib` config, so it accepts any field that can be accepted by the `ray.rllib` and used to tune the behaviour of the `ray.rllib.agents.dqn.ApexTrainer` trainer.
+In order to run a training process, firstly you should create a config file (three config files, that was used for the project are presented in the folder `configs`). It should be in a yaml file format and it is a common `ray.rllib` config, so it accepts any field that can be accepted by the `ray.rllib` and used to tune the behaviour of the `ray.rllib.agents.dqn.ApexTrainer` trainer. Run training with the following command from the root of the repository:
+
 ```python -m scripts.main --config path_to_config_file```
 
 # Reproduce tables and figures from the project report
