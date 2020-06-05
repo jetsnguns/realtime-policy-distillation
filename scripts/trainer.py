@@ -18,12 +18,8 @@ MyPolicy = DQNTorchPolicy.with_updates(
     loss_fn=loss_callback,
 )
 
-
-# MyTrainer = DQNTrainer.with_updates(
 MyTrainer=ApexTrainer.with_updates(
     name='MyDQN',
     get_policy_class=my_get_policy,
     default_policy=MyPolicy,
 )
-
-
