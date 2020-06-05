@@ -1,0 +1,33 @@
+env: "SpaceInvadersNoFrameskip-v4"
+num_gpus: 1
+num_workers: 2
+evaluation_num_workers: 2
+num_envs_per_worker: 2
+use_pytorch: True
+optimizer:
+    num_replay_buffer_shards: 1
+model:
+    custom_model: "custom_model"
+    custom_options:
+      tau: 1.
+monitor: False
+dueling: False
+double_q: False
+num_atoms: 1
+noisy: False
+hiddens: False
+buffer_size: 1000000
+target_network_update_freq: 50000
+timesteps_per_iteration: 25000
+rollout_fragment_length: 20
+train_batch_size: 512
+lr: 0.0001
+adam_epsilon: 0.00015
+exploration_config:
+    final_epsilon: 0.01
+    epsilon_timesteps: 200000
+evaluation_interval: 1
+evaluation_num_episodes: 30
+evaluation_config:
+    explore: False
+worker_side_prioritization: False
